@@ -161,5 +161,5 @@ def predict():
 # ── Production Runner ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # Render passes an environment port variable that we must read and bind to
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 7860))
     app.run(host="0.0.0.0", port=port, debug=False)
