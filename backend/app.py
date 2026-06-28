@@ -20,6 +20,7 @@ import torchvision.transforms as T
 from transformers import ViTForImageClassification
 
 app = Flask(__name__)
+# Enable CORS for everyone so your React application can communicate with it
 CORS(app)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -30,6 +31,8 @@ vit_threshold = 0.5     # overwritten with the val-tuned value from the checkpoi
 IMG_SIZE      = 224
 IMG_MEAN      = [0.5, 0.5, 0.5]
 IMG_STD       = [0.5, 0.5, 0.5]
+
+# Render Free Tier runs on CPU, this safely falls back to CPU if CUDA is unavailable
 DEVICE        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -155,5 +158,8 @@ def predict():
         return jsonify({"error": "Prediction failed. See server logs."}), 500
 
 
+# ── Production Runner ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # Render passes an environment port variable that we must read and bind to
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)

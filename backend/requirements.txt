@@ -9,7 +9,7 @@ torch==2.3.0           # or torch==2.3.0+cu121 for CUDA 12.1 GPU
 torchvision==0.18.0
 transformers==4.41.2
 accelerate==0.30.0
-
+gunicorn==22.0.0
 # ── CNN model (Keras / TensorFlow)  [fallback only] ──────────────────────────
 # Uncomment if you want CNN fallback support:
 # tensorflow==2.16.1
