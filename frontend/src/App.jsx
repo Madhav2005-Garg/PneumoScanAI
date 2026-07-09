@@ -78,10 +78,13 @@ const TRAIN_HISTORY = {
   val_auc:  [0.987,  0.990,  0.991,  0.992,  0.992,  0.992,  0.993],
 };
 // Confusion matrix at threshold=0.5 (best balanced performance), n=624 test images
-// At 0.5  → TP=371 FP=45  FN=19  TN=189  Acc=90%
-// At 0.092 → TP=387 FP=87  FN=3   TN=147  Acc=86% (val-tuned max-F1 threshold)
+// At 0.5 → TP=371 FP=45  FN=19  TN=189  Acc=90%
+// NOTE: figures below the confusion matrix that reference "threshold=0.7" are
+// placeholders carried over from the old 0.092 numbers — recompute precision/
+// recall/accuracy at 0.7 from your notebook's precision_recall_curve output
+// and update the CardHeader `sub` text in ModelMetrics once you have them.
 const CM = { TP:371, FP:45, FN:19, TN:189 };
-const DECISION_THRESHOLD = 0.092;  // val-tuned F1-optimal threshold from notebook
+const DECISION_THRESHOLD = 0.7;  // default decision threshold
 
 // ── Global styles injected once ───────────────────────────────────────────────
 const GLOBAL_CSS = `
@@ -298,7 +301,7 @@ function SinglePredict({ C }) {
   const [result, setResult]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
-  const [threshold, setThreshold] = useState(0.092);
+  const [threshold, setThreshold] = useState(0.7);
   const [dragging, setDragging]   = useState(false);
   const inputRef = useRef();
 
@@ -479,11 +482,11 @@ function SinglePredict({ C }) {
                   <span style={{fontSize:10,color:C.textDim}}>← More sensitive</span>
                   <span style={{fontSize:10,color:C.textDim}}>More specific →</span>
                 </div>
-                <button onClick={()=>setThreshold(0.092)} style={{
+                <button onClick={()=>setThreshold(0.7)} style={{
                   marginTop:8,background:"none",border:"none",cursor:"pointer",
                   fontSize:10,color:C.accent,padding:0,textDecoration:"underline"
                 }}>
-                  Reset to validated optimum (0.092)
+                  Reset to default threshold (0.7)
                 </button>
               </div>
 
@@ -598,7 +601,7 @@ function BatchPredict({ C }) {
   const [loading, setLoading]   = useState(false);
   const [progress, setProgress] = useState(0);
   const [activeChart, setActiveChart] = useState("bar");
-  const [threshold, setThreshold]     = useState(0.092);
+  const [threshold, setThreshold]     = useState(0.7);
   const [dragging, setDragging]       = useState(false);
   const folderRef = useRef();
   const dropRef   = useRef();
@@ -1121,7 +1124,7 @@ function ModelMetrics({ C }) {
 
       {/* Confusion matrix */}
       <Card C={C}>
-        <CardHeader C={C} title="🔢 Confusion Matrix" sub="At threshold=0.5 — 624 test images (Acc 90%). Val-tuned threshold=0.092 gives Acc 86%, Recall 99%"/>
+        <CardHeader C={C} title="🔢 Confusion Matrix" sub="At threshold=0.5 — 624 test images (Acc 90%). Default threshold=0.7 — recompute precision/recall/accuracy from your test set and update this line"/>
         <div style={{padding:18,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           {[
             {label:"True Positive",  val:CM.TP, color:C.safe,   icon:"✅", desc:"Pneumonia correctly detected"},
@@ -1187,7 +1190,7 @@ function About({ C }) {
     {icon:"📤",title:"Upload X-Ray",     desc:"JPEG or PNG chest radiograph via drag-and-drop, file browser, or folder upload."},
     {icon:"🔧",title:"Preprocessing",    desc:"Resized to 224×224px, normalised with ImageNet mean/std [0.485,0.456,0.406] / [0.229,0.224,0.225], augmented with rotation, color jitter & flips during training."},
     {icon:"🧠",title:"ConvNeXt Inference",desc:"28M-param ConvNeXt-Tiny backbone — 4 stages of large-kernel depthwise convolutions with GELU, LayerNorm, and inverted-bottleneck blocks."},
-    {icon:"📊",title:"Sigmoid Output",   desc:"Custom 3-layer head outputs pneumonia probability [0,1]. Default threshold 0.092 (val-tuned max-F1) catches 99.2% of pneumonia cases."},
+    {icon:"📊",title:"Sigmoid Output",   desc:"Custom 3-layer head outputs pneumonia probability [0,1]. Default threshold 0.7 — update the recall/precision figures here once recomputed from your test set."},
     {icon:"⚖️",title:"Class Weighting", desc:"Imbalanced dataset (3875 vs 1341) handled via pos_weight=0.346 in BCEWithLogitsLoss — upweights normal class during training."},
     {icon:"🩺",title:"Clinical Note",    desc:"~90% test accuracy at threshold 0.5. All results must be reviewed by a qualified radiologist — not for diagnosis."},
   ];
@@ -1405,7 +1408,7 @@ export default function App() {
             PneumoScanAI · Educational use only · Not for clinical diagnosis
           </span>
           <span style={{fontSize:11,color:C.textDim}}>
-            ConvNeXt-Tiny · ~90% Test Accuracy · Val-tuned Threshold 0.092
+            ConvNeXt-Tiny · ~90% Test Accuracy · Threshold 0.7
           </span>
         </footer>
       </div>
