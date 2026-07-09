@@ -26,7 +26,7 @@ CORS(app)
 CHECKPOINT = os.environ.get("CNN_CHECKPOINT", "pneumonia_cnn_checkpoint.pt")
 
 model         = None
-threshold     = 0.092    # val-tuned F1-optimal; overwritten from checkpoint
+threshold     = 0.7    # val-tuned F1-optimal; overwritten from checkpoint
 IMG_SIZE      = 224
 # ImageNet stats used by ConvNeXt-Tiny (pulled from torchvision weight metadata)
 IMG_MEAN      = [0.485, 0.456, 0.406]
@@ -44,7 +44,7 @@ def load_model():
     ckpt = torch.load(CHECKPOINT, map_location=DEVICE)
 
     # Read preprocessing params saved at training time
-    threshold = float(ckpt.get("threshold", 0.092))
+    threshold = float(ckpt.get("threshold", 0.7))
     IMG_SIZE  = int(ckpt.get("img_size",  224))
     IMG_MEAN  = list(ckpt.get("img_mean", [0.485, 0.456, 0.406]))
     IMG_STD   = list(ckpt.get("img_std",  [0.229, 0.224, 0.225]))
