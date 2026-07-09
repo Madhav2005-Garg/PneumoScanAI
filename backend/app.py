@@ -1,9 +1,9 @@
 """
 app.py — Flask backend for PneumoScanAI
-Serves the fine-tuned Vision Transformer (ViT) model:
-  pneumonia_vit_checkpoint.pt
+Serves the fine-tuned ConvNeXt-Tiny model:
+  pneumonia_cnn_checkpoint.pt
 
-Place that checkpoint file in this same folder before starting the server.
+Place that checkpoint file in this same backend/ folder before starting.
 """
 
 from flask import Flask, request, jsonify
@@ -17,74 +17,76 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import torchvision.transforms as T
-from transformers import ViTForImageClassification
+from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights
 
 app = Flask(__name__)
-# Enable CORS for everyone so your React application can communicate with it
 CORS(app)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-VIT_CHECKPOINT = os.environ.get("VIT_CHECKPOINT", "pneumonia_vit_checkpoint.pt")
+CHECKPOINT = os.environ.get("CNN_CHECKPOINT", "pneumonia_cnn_checkpoint.pt")
 
 model         = None
-vit_threshold = 0.5     # overwritten with the val-tuned value from the checkpoint
+threshold     = 0.092    # val-tuned F1-optimal; overwritten from checkpoint
 IMG_SIZE      = 224
-IMG_MEAN      = [0.5, 0.5, 0.5]
-IMG_STD       = [0.5, 0.5, 0.5]
-
-# Render Free Tier runs on CPU, this safely falls back to CPU if CUDA is unavailable
+# ImageNet stats used by ConvNeXt-Tiny (pulled from torchvision weight metadata)
+IMG_MEAN      = [0.485, 0.456, 0.406]
+IMG_STD       = [0.229, 0.224, 0.225]
 DEVICE        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # ── Loader ────────────────────────────────────────────────────────────────────
-def load_vit():
-    global model, vit_threshold, IMG_SIZE, IMG_MEAN, IMG_STD
+def load_model():
+    global model, threshold, IMG_SIZE, IMG_MEAN, IMG_STD
 
-    print(f"[INFO] Device: {DEVICE}")
-    checkpoint = torch.load(VIT_CHECKPOINT, map_location=DEVICE)
+    print(f"[INFO] Device  : {DEVICE}")
+    print(f"[INFO] Loading checkpoint: {CHECKPOINT}")
 
-    model_name    = checkpoint.get("model_name", "google/vit-base-patch16-224-in21k")
-    vit_threshold = checkpoint.get("threshold", 0.5)
-    IMG_SIZE      = checkpoint.get("img_size",  224)
-    IMG_MEAN      = checkpoint.get("img_mean",  [0.5, 0.5, 0.5])
-    IMG_STD       = checkpoint.get("img_std",   [0.5, 0.5, 0.5])
+    ckpt = torch.load(CHECKPOINT, map_location=DEVICE)
 
-    vit = ViTForImageClassification.from_pretrained(
-        model_name,
-        num_labels=1,
-        ignore_mismatched_sizes=True,
-    )
-    # Rebuild the exact same head used during training
-    vit.classifier = nn.Sequential(
-        nn.Linear(vit.config.hidden_size, 256),
+    # Read preprocessing params saved at training time
+    threshold = float(ckpt.get("threshold", 0.092))
+    IMG_SIZE  = int(ckpt.get("img_size",  224))
+    IMG_MEAN  = list(ckpt.get("img_mean", [0.485, 0.456, 0.406]))
+    IMG_STD   = list(ckpt.get("img_std",  [0.229, 0.224, 0.225]))
+
+    # Rebuild the exact same architecture used in training
+    # convnext_tiny backbone with a custom 3-layer MLP head replacing the
+    # original Linear(768→1000) classification head.
+    net = convnext_tiny(weights=None)   # no pretrained weights; we load our own
+    in_features = net.classifier[2].in_features   # 768 for convnext_tiny
+
+    net.classifier[2] = nn.Sequential(
+        nn.Linear(in_features, 256),
         nn.GELU(),
         nn.Dropout(0.4),
         nn.Linear(256, 64),
         nn.GELU(),
         nn.Dropout(0.3),
-        nn.Linear(64, 1)
+        nn.Linear(64, 1),
     )
-    vit.load_state_dict(checkpoint["model_state_dict"])
-    vit.to(DEVICE)
-    vit.eval()
 
-    model = vit
-    print(f"[INFO] ViT model loaded  | threshold={vit_threshold:.3f} "
-          f"| test_acc={checkpoint.get('test_accuracy', 0) * 100:.1f}% "
-          f"| test_auc={checkpoint.get('test_auc', 0):.3f}")
+    net.load_state_dict(ckpt["model_state_dict"])
+    net.to(DEVICE)
+    net.eval()
+
+    model = net
+    print(f"[INFO] ConvNeXt-Tiny loaded  "
+          f"| threshold={threshold:.3f} "
+          f"| test_acc={ckpt.get('test_accuracy', 0)*100:.1f}% "
+          f"| test_auc={ckpt.get('test_auc', 0):.4f}")
 
 
 try:
-    load_vit()
+    load_model()
 except Exception as e:
-    print(f"[ERROR] Could not load ViT checkpoint '{VIT_CHECKPOINT}': {e}")
+    print(f"[ERROR] Could not load checkpoint '{CHECKPOINT}': {e}")
     traceback.print_exc()
     model = None
 
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 def preprocess(image_bytes):
-    """Returns (tensor, pil_img_resized) ready for ViT inference."""
+    """Returns (tensor, pil_img_resized) ready for ConvNeXt inference."""
     pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     transform = T.Compose([
         T.Resize((IMG_SIZE, IMG_SIZE)),
@@ -107,9 +109,9 @@ def encode_preview(pil_img):
 def health():
     return jsonify({
         "status":       "ok",
-        "model_type":   "vit",
+        "model_type":   "convnext_tiny",
         "model_loaded": model is not None,
-        "threshold":    round(vit_threshold, 3),
+        "threshold":    round(threshold, 4),
         "device":       str(DEVICE),
     })
 
@@ -134,22 +136,22 @@ def predict():
         image_bytes = file.read()
         tensor, pil_img = preprocess(image_bytes)
 
-        # allow caller to override threshold; default to the val-tuned value
-        threshold = float(request.form.get("threshold", vit_threshold))
+        # Caller can override threshold; default is the val-tuned value from checkpoint
+        thr = float(request.form.get("threshold", threshold))
 
         with torch.no_grad():
-            logit = model(pixel_values=tensor).logits.squeeze()
+            logit = model(tensor).squeeze()
             prob  = float(torch.sigmoid(logit).item())
 
-        label      = "PNEUMONIA" if prob >= threshold else "NORMAL"
+        label      = "PNEUMONIA" if prob >= thr else "NORMAL"
         confidence = prob if label == "PNEUMONIA" else (1.0 - prob)
 
         return jsonify({
             "label":       label,
             "probability": round(prob, 4),
             "confidence":  round(confidence * 100, 2),
-            "threshold":   round(threshold, 3),
-            "model_type":  "vit",
+            "threshold":   round(thr, 4),
+            "model_type":  "convnext_tiny",
             "preview":     encode_preview(pil_img),
         })
 
@@ -158,8 +160,5 @@ def predict():
         return jsonify({"error": "Prediction failed. See server logs."}), 500
 
 
-# ── Production Runner ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Render passes an environment port variable that we must read and bind to
-    port = int(os.environ.get("PORT", 7860))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(debug=True, port=5000)

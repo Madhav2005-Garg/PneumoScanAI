@@ -4,10 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadialBarChart, RadialBar, ReferenceLine
 } from "recharts";
 
-// Dynamic Endpoint handling (Works perfectly for both Vite and Create React App configs)
-const API_URL = import.meta.env?.VITE_API_URL 
-  || process.env?.REACT_APP_API_URL 
-  || "http://localhost:5000";
+const API_URL = "http://localhost:5000";
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 const DARK = {
@@ -66,21 +63,23 @@ const LIGHT = {
   glass:      "rgba(255,255,255,0.90)",
 };
 
-// Training history (ViT-Base, 2-phase fine-tuning) & confusion matrix
-// Phase 1 (epochs 1-5): encoder frozen, head-only warm-up
-// Phase 2 (epochs 6-7): last 2 encoder layers + head fine-tuned
+// Training history — ConvNeXt-Tiny, 2-phase fine-tuning, real epoch logs
+// Phase 1 (epochs 1-5): backbone frozen, head-only warm-up
+// Phase 2 (epochs 6-7): features.6 + features.7 + classifier unfrozen
 const PHASE1_EPOCHS = 5;
 const TRAIN_HISTORY = {
-  loss:     [0.1790, 0.1062, 0.0836, 0.0755, 0.0724, 0.0721, 0.0630],
-  val_loss: [0.3312, 0.4115, 0.3818, 0.2522, 0.2008, 0.3428, 0.2853],
-  acc:      [0.828,  0.914,  0.937,  0.942,  0.945,  0.949,  0.951],
-  val_acc:  [0.812,  0.688,  0.688,  0.812,  0.875,  0.750,  0.812],
-  auc:      [0.924,  0.974,  0.983,  0.986,  0.987,  0.988,  0.990],
-  val_auc:  [1.000,  1.000,  0.969,  0.969,  0.969,  0.953,  0.953],
+  loss:     [0.1292, 0.0794, 0.0679, 0.0642, 0.0563, 0.0523, 0.0504],
+  val_loss: [0.0755, 0.1103, 0.0842, 0.0719, 0.0845, 0.0643, 0.0675],
+  acc:      [0.901,  0.942,  0.946,  0.952,  0.959,  0.960,  0.963],
+  val_acc:  [0.925,  0.886,  0.912,  0.934,  0.918,  0.951,  0.945],
+  auc:      [0.962,  0.985,  0.989,  0.990,  0.992,  0.994,  0.994],
+  val_auc:  [0.987,  0.990,  0.991,  0.992,  0.992,  0.992,  0.993],
 };
-// Confusion matrix at the val-tuned decision threshold (0.773), n=624 test images
-const CM = { TP:335, FP:24, FN:55, TN:210 };
-const DECISION_THRESHOLD = 0.773;
+// Confusion matrix at threshold=0.5 (best balanced performance), n=624 test images
+// At 0.5  → TP=371 FP=45  FN=19  TN=189  Acc=90%
+// At 0.092 → TP=387 FP=87  FN=3   TN=147  Acc=86% (val-tuned max-F1 threshold)
+const CM = { TP:371, FP:45, FN:19, TN:189 };
+const DECISION_THRESHOLD = 0.092;  // val-tuned F1-optimal threshold from notebook
 
 // ── Global styles injected once ───────────────────────────────────────────────
 const GLOBAL_CSS = `
@@ -297,7 +296,7 @@ function SinglePredict({ C }) {
   const [result, setResult]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
-  const [threshold, setThreshold] = useState(0.773);
+  const [threshold, setThreshold] = useState(0.092);
   const [dragging, setDragging]   = useState(false);
   const inputRef = useRef();
 
@@ -353,7 +352,7 @@ function SinglePredict({ C }) {
             <span style={{color:C.accent}}>Get instant prediction</span>
           </h2>
           <p style={{fontSize:13,color:C.textSec,lineHeight:1.65,maxWidth:480}}>
-            Drop a JPEG or PNG chest radiograph. The fine-tuned Vision Transformer (ViT)
+            Drop a JPEG or PNG chest radiograph. The fine-tuned ConvNeXt-Tiny CNN
             analyses it in seconds and returns a pneumonia probability with confidence score.
           </p>
         </div>
@@ -471,18 +470,18 @@ function SinglePredict({ C }) {
                     borderRadius:6,padding:"1px 10px"
                   }}>{threshold.toFixed(3)}</span>
                 </div>
-                <input type="range" min="0.5" max="0.95" step="0.005" value={threshold}
+                <input type="range" min="0.05" max="0.95" step="0.005" value={threshold}
                   onChange={(e)=>setThreshold(parseFloat(e.target.value))}
                   style={{width:"100%",accentColor:C.accent,cursor:"pointer"}}/>
                 <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
                   <span style={{fontSize:10,color:C.textDim}}>← More sensitive</span>
                   <span style={{fontSize:10,color:C.textDim}}>More specific →</span>
                 </div>
-                <button onClick={()=>setThreshold(0.773)} style={{
+                <button onClick={()=>setThreshold(0.092)} style={{
                   marginTop:8,background:"none",border:"none",cursor:"pointer",
                   fontSize:10,color:C.accent,padding:0,textDecoration:"underline"
                 }}>
-                  Reset to validated optimum (0.773)
+                  Reset to validated optimum (0.092)
                 </button>
               </div>
 
@@ -492,7 +491,7 @@ function SinglePredict({ C }) {
                 </Btn>
               )}
 
-              {loading && <Spinner label="Running ViT inference…" C={C}/>}
+              {loading && <Spinner label="Running ConvNeXt inference…" C={C}/>}
 
               {error && (
                 <div className="fade-in" style={{
@@ -559,8 +558,8 @@ function SinglePredict({ C }) {
                     fontSize:12, color:C.textSec, lineHeight:1.65
                   }}>
                     {isPneu
-                      ? "⚠️ Pneumonia indicators detected. Model accuracy ~88% — please confirm with a radiologist."
-                      : "✓ No significant pneumonia markers. Model accuracy ~88% — consult a physician regardless."}
+                      ? "⚠️ Pneumonia indicators detected. Model accuracy ~90% (threshold 0.5) — please confirm with a radiologist."
+                      : "✓ No significant pneumonia markers. Model accuracy ~90% (threshold 0.5) — consult a physician regardless."}
                   </div>
 
                   <Btn variant="outline" full C={C} onClick={reset}>
@@ -575,13 +574,13 @@ function SinglePredict({ C }) {
 
       {/* Stats strip */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
-        <StatBox label="Test Accuracy" value="88%"     color={C.accent}  icon="🎯" C={C}/>
-        <StatBox label="Architecture" value="ViT"      color={C.safe}    icon="🧠" C={C}/>
-        <StatBox label="Input Size"   value="224×224"  color={C.purple}  icon="📐" C={C}/>
+        <StatBox label="Test Accuracy" value="90%"        color={C.accent}  icon="🎯" C={C}/>
+        <StatBox label="Architecture" value="ConvNeXt"    color={C.safe}    icon="🧠" C={C}/>
+        <StatBox label="Input Size"   value="224×224"     color={C.purple}  icon="📐" C={C}/>
       </div>
 
       <p style={{fontSize:11,color:C.textDim,textAlign:"center",lineHeight:1.7}}>
-        For educational purposes only · ~88% test accuracy ·{" "}
+        For educational purposes only · ~90% test accuracy (threshold 0.5) ·{" "}
         <strong style={{color:C.textDim}}>Not a substitute for medical diagnosis</strong>
       </p>
     </div>
@@ -597,7 +596,7 @@ function BatchPredict({ C }) {
   const [loading, setLoading]   = useState(false);
   const [progress, setProgress] = useState(0);
   const [activeChart, setActiveChart] = useState("bar");
-  const [threshold, setThreshold]     = useState(0.773);
+  const [threshold, setThreshold]     = useState(0.092);
   const [dragging, setDragging]       = useState(false);
   const folderRef = useRef();
   const dropRef   = useRef();
@@ -823,7 +822,7 @@ function BatchPredict({ C }) {
                   background:C.accent+"18",border:`1px solid ${C.accent}30`,
                   borderRadius:6,padding:"1px 10px"}}>{threshold.toFixed(3)}</span>
               </div>
-              <input type="range" min="0.5" max="0.95" step="0.005" value={threshold}
+              <input type="range" min="0.05" max="0.95" step="0.005" value={threshold}
                 onChange={(e)=>setThreshold(parseFloat(e.target.value))}
                 style={{width:"100%",accentColor:C.accent,cursor:"pointer"}}/>
               <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
@@ -1076,7 +1075,7 @@ function ModelMetrics({ C }) {
       {/* Training curves */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <Card C={C}>
-          <CardHeader C={C} title="📉 Loss Curve" sub="Train vs Validation (Phase 1: epochs 1-5, Phase 2: 6-7)"/>
+          <CardHeader C={C} title="📉 Loss Curve" sub="Train vs Validation (Phase 1: epochs 1-5 head only, Phase 2: 6-7 CNN fine-tune)"/>
           <div style={{padding:"16px 10px 10px"}}>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={lossData}>
@@ -1097,7 +1096,7 @@ function ModelMetrics({ C }) {
         </Card>
 
         <Card C={C}>
-          <CardHeader C={C} title="📈 Accuracy Curve" sub="Train vs Validation (Phase 1: epochs 1-5, Phase 2: 6-7)"/>
+          <CardHeader C={C} title="📈 Accuracy Curve" sub="Train vs Validation (Phase 1: epochs 1-5 head only, Phase 2: 6-7 CNN fine-tune)"/>
           <div style={{padding:"16px 10px 10px"}}>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={accData}>
@@ -1120,7 +1119,7 @@ function ModelMetrics({ C }) {
 
       {/* Confusion matrix */}
       <Card C={C}>
-        <CardHeader C={C} title="🔢 Confusion Matrix" sub="Evaluated on 624 test images"/>
+        <CardHeader C={C} title="🔢 Confusion Matrix" sub="At threshold=0.5 — 624 test images (Acc 90%). Val-tuned threshold=0.092 gives Acc 86%, Recall 99%"/>
         <div style={{padding:18,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           {[
             {label:"True Positive",  val:CM.TP, color:C.safe,   icon:"✅", desc:"Pneumonia correctly detected"},
@@ -1145,14 +1144,14 @@ function ModelMetrics({ C }) {
 
       {/* Architecture */}
       <Card C={C}>
-        <CardHeader C={C} title="🧠 ViT-Base Architecture" sub="google/vit-base-patch16-224-in21k, fine-tuned"/>
+        <CardHeader C={C} title="🧠 ConvNeXt-Tiny Architecture" sub="torchvision ImageNet-1k pretrained, 2-phase fine-tuning"/>
         <div style={{padding:16,display:"flex",flexDirection:"column",gap:8}}>
           {[
-            {block:"Patches", detail:"224×224 image → 16×16 patches → 196 tokens + [CLS]", color:C.accent},
-            {block:"Encoder", detail:"12-layer Transformer encoder, hidden_size=768, 12 attention heads", color:C.purple},
-            {block:"Phase 1", detail:"Encoder frozen → train classifier head only (5 epochs)", color:C.safe},
-            {block:"Phase 2", detail:"Unfreeze encoder.layer.10 + layer.11 → fine-tune with head (2 epochs)", color:C.warn},
-            {block:"Head",    detail:"Linear(768→256) → GELU → Drop(0.4) → Linear(256→64) → GELU → Drop(0.3) → Linear(64→1)", color:C.danger},
+            {block:"Backbone", detail:"ConvNeXt-Tiny — 4 stages of depthwise conv blocks, GELU, LayerNorm (28M params total)", color:C.accent},
+            {block:"Phase 1",  detail:"Backbone frozen → train classifier head only (5 epochs, lr=1e-3)", color:C.purple},
+            {block:"Phase 2",  detail:"Freeze all → unfreeze features.6 + features.7 + classifier (2 epochs, backbone lr=5e-6)", color:C.safe},
+            {block:"Pool",     detail:"AdaptiveAvgPool → LayerNorm2d → Flatten  (from ConvNeXt backbone)", color:C.warn},
+            {block:"Head",     detail:"Linear(768→256) → GELU → Drop(0.4) → Linear(256→64) → GELU → Drop(0.3) → Linear(64→1)", color:C.danger},
           ].map((b,i)=>(
             <div key={i} style={{
               display:"flex",alignItems:"center",gap:14,
@@ -1184,29 +1183,20 @@ function ModelMetrics({ C }) {
 function About({ C }) {
   const steps = [
     {icon:"📤",title:"Upload X-Ray",     desc:"JPEG or PNG chest radiograph via drag-and-drop, file browser, or folder upload."},
-    {icon:"🔧",title:"Preprocessing",    desc:"Resized to 224×224px, normalised with ImageNet mean/std, augmented with rotation, color jitter & flips during training."},
-    {icon:"🧠",title:"ViT Inference",    desc:"Image split into 16×16 patches → 12-layer Transformer encoder with self-attention models relationships across the entire X-ray."},
-    {icon:"📊",title:"Sigmoid Output",   desc:"Custom classification head outputs pneumonia probability [0,1]. Values above threshold (0.773) → PNEUMONIA."},
-    {icon:"⚖️",title:"Class Weighting", desc:"Imbalanced dataset (3876 vs 1342) handled via pos_weight in BCEWithLogitsLoss during training."},
-    {icon:"🩺",title:"Clinical Note",    desc:"~88% test accuracy. All results must be reviewed by a qualified radiologist — not for diagnosis."},
+    {icon:"🔧",title:"Preprocessing",    desc:"Resized to 224×224px, normalised with ImageNet mean/std [0.485,0.456,0.406] / [0.229,0.224,0.225], augmented with rotation, color jitter & flips during training."},
+    {icon:"🧠",title:"ConvNeXt Inference",desc:"28M-param ConvNeXt-Tiny backbone — 4 stages of large-kernel depthwise convolutions with GELU, LayerNorm, and inverted-bottleneck blocks."},
+    {icon:"📊",title:"Sigmoid Output",   desc:"Custom 3-layer head outputs pneumonia probability [0,1]. Default threshold 0.092 (val-tuned max-F1) catches 99.2% of pneumonia cases."},
+    {icon:"⚖️",title:"Class Weighting", desc:"Imbalanced dataset (3875 vs 1341) handled via pos_weight=0.346 in BCEWithLogitsLoss — upweights normal class during training."},
+    {icon:"🩺",title:"Clinical Note",    desc:"~90% test accuracy at threshold 0.5. All results must be reviewed by a qualified radiologist — not for diagnosis."},
   ];
   const techStack = [
     {name:"PyTorch",          role:"Model training & inference", icon:"🔥"},
-    {name:"HuggingFace 🤗",   role:"Pretrained ViT + processor",  icon:"🤗"},
+    {name:"TorchVision",      role:"ConvNeXt-Tiny pretrained",   icon:"👁️"},
     {name:"Flask",            role:"REST API backend",           icon:"🌐"},
     {name:"Flask-CORS",       role:"Cross-origin requests",      icon:"🔗"},
     {name:"React 18",         role:"Frontend UI",                icon:"⚛️"},
     {name:"Recharts",         role:"Data visualisation",         icon:"📊"},
   ];
-  const tips = [
-    "Fine-tune more encoder layers (currently only layer.10 + layer.11 unfrozen in Phase 2)",
-    "Train Phase 2 for more than 2 epochs — val AUC was still 0.953 and may improve further",
-    "Use test-time augmentation (TTA) — average predictions across augmented copies",
-    "Try ViT-Large or a domain-specific checkpoint (e.g. chest X-ray pretrained ViT)",
-    "Merge train+val and use stratified k-fold cross-validation",
-    "Current threshold (0.773) favours precision — lower it for higher recall on pneumonia",
-  ];
-
   return (
     <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:20}}>
 
@@ -1290,27 +1280,6 @@ function About({ C }) {
         </div>
       </Card>
 
-      {/* Tips */}
-      <Card C={C}>
-        <CardHeader C={C} title="💡 Improvement Ideas" sub="To push accuracy beyond 88%"/>
-        <div style={{padding:16,display:"flex",flexDirection:"column",gap:8}}>
-          {tips.map((tip,i)=>(
-            <div key={i} style={{
-              display:"flex",gap:12,padding:"11px 14px",
-              background:C.surfaceHi,borderRadius:10,
-              border:`1px solid ${C.border}`,alignItems:"flex-start"
-            }}>
-              <div style={{
-                minWidth:24,height:24,borderRadius:6,
-                background:C.accent+"20",color:C.accent,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:11,fontWeight:800,flexShrink:0
-              }}>{i+1}</div>
-              <span style={{fontSize:12,color:C.textSec,lineHeight:1.6}}>{tip}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
@@ -1376,13 +1345,13 @@ export default function App() {
               fontSize:10,color:C.textDim,border:`1px solid ${C.border}`,
               borderRadius:6,padding:"3px 9px",letterSpacing:"0.06em",
               background:C.surfaceHi
-            }}>ViT</span>
+            }}>ConvNeXt</span>
             <span style={{
               fontSize:10,
               background:C.safe+"22",color:C.safe,
               border:`1px solid ${C.safe}44`,borderRadius:6,
               padding:"3px 9px",letterSpacing:"0.06em",fontWeight:600
-            }}>~88% TEST ACC</span>
+            }}>~90% TEST ACC</span>
             <ThemeToggle dark={dark} toggle={toggle} C={C}/>
           </div>
         </header>
@@ -1434,7 +1403,7 @@ export default function App() {
             PneumoScanAI · Educational use only · Not for clinical diagnosis
           </span>
           <span style={{fontSize:11,color:C.textDim}}>
-            ViT-Base · ~88% Test Accuracy · Threshold 0.773
+            ConvNeXt-Tiny · ~90% Test Accuracy · Val-tuned Threshold 0.092
           </span>
         </footer>
       </div>
