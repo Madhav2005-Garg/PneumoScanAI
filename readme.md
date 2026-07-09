@@ -308,4 +308,8 @@ recharts ^2.12.7
 
 ## 👤 Author
 
+<<<<<<< HEAD
 Built as an end-to-end medical imaging deep learning project — from dataset exploration and model training on Kaggle, to a production-ready Flask + React web application with dark/light mode, batch prediction, and interactive analytics.
+=======
+Built as an end-to-end medical imaging deep learning project — from dataset exploration and model training on Kaggle, to a production-ready Flask + React web application with dark/light mode, batch prediction, and interactive analytics.
+>>>>>>> 9d0ae654e222a53d507763c59c6a5bd4979e712e
